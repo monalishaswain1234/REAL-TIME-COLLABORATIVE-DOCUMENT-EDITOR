@@ -1,0 +1,637 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CollabWrite - Real-Time Collaborative Editor</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        .editor-content {
+            min-height: 300px;
+            outline: none;
+            padding: 1rem;
+        }
+        .cursor {
+            position: absolute;
+            width: 2px;
+            height: 20px;
+            background-color: blue;
+            z-index: 10;
+        }
+        .cursor-label {
+            position: absolute;
+            top: -20px;
+            left: 0;
+            font-size: 12px;
+            background-color: blue;
+            color: white;
+            padding: 2px 5px;
+            border-radius: 3px;
+            white-space: nowrap;
+        }
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.5; }
+            100% { opacity: 1; }
+        }
+        .typing-indicator {
+            animation: pulse 1.5s infinite;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 font-sans">
+    <!-- Navigation Bar -->
+    <nav class="bg-blue-600 text-white shadow-lg">
+        <div class="container mx-auto px-4 py-3 flex justify-between items-center">
+            <div class="flex items-center space-x-2">
+                <i class="fas fa-file-alt text-xl"></i>
+                <h1 class="text-xl font-bold">CollabWrite</h1>
+            </div>
+            <div class="flex items-center space-x-4">
+                <div id="user-info" class="hidden">
+                    <span id="username-display" class="font-medium"></span>
+                    <button id="logout-btn" class="ml-2 px-3 py-1 bg-blue-700 rounded hover:bg-blue-800 text-sm">Logout</button>
+                </div>
+                <button id="login-btn" class="px-4 py-1 bg-blue-700 rounded hover:bg-blue-800">Login</button>
+                <button id="share-btn" class="px-4 py-1 bg-green-600 rounded hover:bg-green-700 flex items-center">
+                    <i class="fas fa-share-alt mr-2"></i> Share
+                </button>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <div class="container mx-auto px-4 py-6">
+        <div class="bg-white rounded-lg shadow-md overflow-hidden">
+            <!-- Toolbar -->
+            <div class="bg-gray-50 px-4 py-2 border-b flex flex-wrap items-center gap-2">
+                <select id="font-family" class="px-2 py-1 border rounded text-sm">
+                    <option value="Arial">Arial</option>
+                    <option value="Times New Roman">Times New Roman</option>
+                    <option value="Courier New">Courier New</option>
+                    <option value="Georgia">Georgia</option>
+                </select>
+                
+                <select id="font-size" class="px-2 py-1 border rounded text-sm">
+                    <option value="1">10px</option>
+                    <option value="2">13px</option>
+                    <option value="3">16px</option>
+                    <option value="4">18px</option>
+                    <option value="5">24px</option>
+                    <option value="6">32px</option>
+                </select>
+                
+                <div class="flex space-x-1">
+                    <button data-command="bold" class="p-2 hover:bg-gray-200 rounded">
+                        <i class="fas fa-bold"></i>
+                    </button>
+                    <button data-command="italic" class="p-2 hover:bg-gray-200 rounded">
+                        <i class="fas fa-italic"></i>
+                    </button>
+                    <button data-command="underline" class="p-2 hover:bg-gray-200 rounded">
+                        <i class="fas fa-underline"></i>
+                    </button>
+                </div>
+                
+                <div class="flex space-x-1">
+                    <button data-command="insertUnorderedList" class="p-2 hover:bg-gray-200 rounded">
+                        <i class="fas fa-list-ul"></i>
+                    </button>
+                    <button data-command="insertOrderedList" class="p-2 hover:bg-gray-200 rounded">
+                        <i class="fas fa-list-ol"></i>
+                    </button>
+                </div>
+                
+                <div class="flex space-x-1">
+                    <button data-command="justifyLeft" class="p-2 hover:bg-gray-200 rounded">
+                        <i class="fas fa-align-left"></i>
+                    </button>
+                    <button data-command="justifyCenter" class="p-2 hover:bg-gray-200 rounded">
+                        <i class="fas fa-align-center"></i>
+                    </button>
+                    <button data-command="justifyRight" class="p-2 hover:bg-gray-200 rounded">
+                        <i class="fas fa-align-right"></i>
+                    </button>
+                </div>
+                
+                <div class="flex space-x-1">
+                    <button data-command="undo" class="p-2 hover:bg-gray-200 rounded">
+                        <i class="fas fa-undo"></i>
+                    </button>
+                    <button data-command="redo" class="p-2 hover:bg-gray-200 rounded">
+                        <i class="fas fa-redo"></i>
+                    </button>
+                </div>
+            </div>
+            
+            <!-- Document Title -->
+            <div class="px-4 py-3 border-b">
+                <input type="text" id="document-title" placeholder="Untitled Document" 
+                       class="w-full text-2xl font-bold focus:outline-none">
+            </div>
+            
+            <!-- Editor Area -->
+            <div class="relative">
+                <div id="editor" class="editor-content" contenteditable="true"></div>
+                <div id="cursors-container"></div>
+            </div>
+        </div>
+        
+        <!-- Collaborators Panel -->
+        <div class="mt-6 bg-white rounded-lg shadow-md overflow-hidden">
+            <div class="bg-gray-50 px-4 py-2 border-b flex justify-between items-center">
+                <h3 class="font-medium">Collaborators</h3>
+                <div id="typing-indicator" class="text-sm text-gray-500 hidden">
+                    <span id="typing-user"></span> is typing...
+                </div>
+            </div>
+            <div id="collaborators-list" class="p-4">
+                <div class="text-gray-500">No collaborators yet. Share the document to invite others.</div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Modals -->
+    <!-- Login Modal -->
+    <div id="login-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center hidden z-50">
+        <div class="bg-white rounded-lg shadow-xl w-full max-w-md">
+            <div class="px-6 py-4 border-b">
+                <h3 class="text-lg font-medium">Sign In</h3>
+            </div>
+            <div class="p-6">
+                <div class="mb-4">
+                    <label class="block text-gray-700 text-sm font-medium mb-2" for="username">
+                        Username
+                    </label>
+                    <input id="username" type="text" 
+                           class="w-full px-3 py-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500">
+                </div>
+                <div class="mb-6">
+                    <label class="block text-gray-700 text-sm font-medium mb-2" for="password">
+                        Password
+                    </label>
+                    <input id="password" type="password" 
+                           class="w-full px-3 py-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500">
+                </div>
+                <div class="flex justify-end">
+                    <button id="cancel-login" class="px-4 py-2 mr-2 text-gray-700 rounded hover:bg-gray-100">
+                        Cancel
+                    </button>
+                    <button id="confirm-login" class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">
+                        Sign In
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Share Modal -->
+    <div id="share-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center hidden z-50">
+        <div class="bg-white rounded-lg shadow-xl w-full max-w-md">
+            <div class="px-6 py-4 border-b">
+                <h3 class="text-lg font-medium">Share Document</h3>
+            </div>
+            <div class="p-6">
+                <div class="mb-4">
+                    <label class="block text-gray-700 text-sm font-medium mb-2">
+                        Share Link
+                    </label>
+                    <div class="flex">
+                        <input id="share-link" type="text" readonly
+                               class="flex-1 px-3 py-2 border rounded-l focus:outline-none bg-gray-50">
+                        <button id="copy-link" class="px-4 py-2 bg-blue-600 text-white rounded-r hover:bg-blue-700">
+                            Copy
+                        </button>
+                    </div>
+                </div>
+                <div class="mb-4">
+                    <label class="block text-gray-700 text-sm font-medium mb-2">
+                        Invite by Email
+                    </label>
+                    <div class="flex">
+                        <input id="invite-email" type="email" placeholder="user@example.com"
+                               class="flex-1 px-3 py-2 border rounded-l focus:outline-none">
+                        <button id="send-invite" class="px-4 py-2 bg-blue-600 text-white rounded-r hover:bg-blue-700">
+                            Send
+                        </button>
+                    </div>
+                </div>
+                <div class="flex justify-end">
+                    <button id="close-share" class="px-4 py-2 text-gray-700 rounded hover:bg-gray-100">
+                        Close
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Simulated WebSocket connection for demo purposes
+        class MockWebSocket {
+            constructor(url) {
+                this.url = url;
+                this.listeners = {
+                    open: [],
+                    message: [],
+                    close: []
+                };
+                this.readyState = 0; // 0: connecting, 1: open, 2: closing, 3: closed
+                
+                // Simulate connection opening
+                setTimeout(() => {
+                    this.readyState = 1;
+                    this.listeners.open.forEach(cb => cb({ type: 'open' }));
+                }, 500);
+            }
+            
+            addEventListener(type, callback) {
+                if (this.listeners[type]) {
+                    this.listeners[type].push(callback);
+                }
+            }
+            
+            send(data) {
+                // In a real app, this would send data to the server
+                console.log('WebSocket send:', data);
+                
+                // Simulate receiving updates from other users
+                if (Math.random() > 0.7) {
+                    setTimeout(() => {
+                        const parsed = JSON.parse(data);
+                        const mockResponse = {
+                            type: 'update',
+                            content: parsed.content + ' (edited by another user)',
+                            cursorPositions: [
+                                {
+                                    userId: 'user2',
+                                    username: 'Collaborator',
+                                    color: '#FF5733',
+                                    position: Math.min(parsed.cursorPosition || 0, parsed.content.length)
+                                }
+                            ]
+                        };
+                        
+                        this.listeners.message.forEach(cb => cb({
+                            data: JSON.stringify(mockResponse)
+                        }));
+                    }, 1000);
+                }
+            }
+            
+            close() {
+                this.readyState = 3;
+                this.listeners.close.forEach(cb => cb({ type: 'close' }));
+            }
+        }
+
+        // Main application
+        document.addEventListener('DOMContentLoaded', () => {
+            // DOM elements
+            const editor = document.getElementById('editor');
+            const documentTitle = document.getElementById('document-title');
+            const loginBtn = document.getElementById('login-btn');
+            const logoutBtn = document.getElementById('logout-btn');
+            const userInfo = document.getElementById('user-info');
+            const usernameDisplay = document.getElementById('username-display');
+            const shareBtn = document.getElementById('share-btn');
+            const loginModal = document.getElementById('login-modal');
+            const cancelLogin = document.getElementById('cancel-login');
+            const confirmLogin = document.getElementById('confirm-login');
+            const usernameInput = document.getElementById('username');
+            const shareModal = document.getElementById('share-modal');
+            const closeShare = document.getElementById('close-share');
+            const shareLink = document.getElementById('share-link');
+            const copyLink = document.getElementById('copy-link');
+            const collaboratorsList = document.getElementById('collaborators-list');
+            const typingIndicator = document.getElementById('typing-indicator');
+            const typingUser = document.getElementById('typing-user');
+            const cursorsContainer = document.getElementById('cursors-container');
+            
+            // Toolbar buttons
+            const toolbarButtons = document.querySelectorAll('[data-command]');
+            
+            // App state
+            let currentUser = null;
+            let collaborators = {};
+            let typingTimeout;
+            let ws;
+            
+            // Initialize the editor with some sample content
+            editor.innerHTML = `
+                <h1>Welcome to CollabWrite!</h1>
+                <p>This is a <strong>real-time collaborative</strong> document editor.</p>
+                <ul>
+                    <li>Multiple users can edit simultaneously</li>
+                    <li>See each other's cursors</li>
+                    <li>Get typing indicators</li>
+                </ul>
+                <p>Start typing to see it in action!</p>
+            `;
+            
+            // Set up toolbar buttons
+            toolbarButtons.forEach(button => {
+                button.addEventListener('click', () => {
+                    const command = button.getAttribute('data-command');
+                    document.execCommand(command, false, null);
+                    editor.focus();
+                });
+            });
+            
+            // Font family and size controls
+            document.getElementById('font-family').addEventListener('change', (e) => {
+                document.execCommand('fontName', false, e.target.value);
+                editor.focus();
+            });
+            
+            document.getElementById('font-size').addEventListener('change', (e) => {
+                document.execCommand('fontSize', false, e.target.value);
+                editor.focus();
+            });
+            
+            // Login functionality
+            loginBtn.addEventListener('click', () => {
+                loginModal.classList.remove('hidden');
+            });
+            
+            cancelLogin.addEventListener('click', () => {
+                loginModal.classList.add('hidden');
+            });
+            
+            confirmLogin.addEventListener('click', () => {
+                const username = usernameInput.value.trim();
+                if (username) {
+                    currentUser = {
+                        id: 'user_' + Date.now(),
+                        username: username,
+                        color: getRandomColor()
+                    };
+                    
+                    usernameDisplay.textContent = currentUser.username;
+                    userInfo.classList.remove('hidden');
+                    loginBtn.classList.add('hidden');
+                    loginModal.classList.add('hidden');
+                    
+                    // Initialize WebSocket connection
+                    initializeWebSocket();
+                    
+                    // Add current user to collaborators list
+                    addCollaborator(currentUser);
+                }
+            });
+            
+            logoutBtn.addEventListener('click', () => {
+                currentUser = null;
+                userInfo.classList.add('hidden');
+                loginBtn.classList.remove('hidden');
+                
+                // Close WebSocket connection
+                if (ws) {
+                    ws.close();
+                }
+                
+                // Clear collaborators
+                collaborators = {};
+                updateCollaboratorsList();
+            });
+            
+            // Share functionality
+            shareBtn.addEventListener('click', () => {
+                if (!currentUser) {
+                    alert('Please sign in to share the document');
+                    return;
+                }
+                
+                shareLink.value = `${window.location.origin}${window.location.pathname}?doc=123&user=${currentUser.id}`;
+                shareModal.classList.remove('hidden');
+            });
+            
+            closeShare.addEventListener('click', () => {
+                shareModal.classList.add('hidden');
+            });
+            
+            copyLink.addEventListener('click', () => {
+                shareLink.select();
+                document.execCommand('copy');
+                
+                // Show feedback
+                const originalText = copyLink.textContent;
+                copyLink.textContent = 'Copied!';
+                setTimeout(() => {
+                    copyLink.textContent = originalText;
+                }, 2000);
+            });
+            
+            // Editor event listeners
+            editor.addEventListener('input', () => {
+                // Send updates to server
+                sendEditorUpdate();
+                
+                // Show typing indicator
+                showTypingIndicator();
+            });
+            
+            editor.addEventListener('keydown', () => {
+                // Show typing indicator on keydown as well
+                showTypingIndicator();
+            });
+            
+            editor.addEventListener('click', updateCursorPosition);
+            editor.addEventListener('keyup', updateCursorPosition);
+            
+            // Initialize WebSocket connection
+            function initializeWebSocket() {
+                // In a real app, this would connect to your WebSocket server
+                // ws = new WebSocket('wss://your-server.com/collab');
+                ws = new MockWebSocket('wss://mock-server.com/collab');
+                
+                ws.addEventListener('open', () => {
+                    console.log('WebSocket connection established');
+                    
+                    // Send initial document state
+                    sendEditorUpdate();
+                });
+                
+                ws.addEventListener('message', (event) => {
+                    const data = JSON.parse(event.data);
+                    
+                    if (data.type === 'update') {
+                        // Update document content from other users
+                        if (data.content !== editor.innerHTML) {
+                            editor.innerHTML = data.content;
+                        }
+                        
+                        // Update other users' cursor positions
+                        updateRemoteCursors(data.cursorPositions);
+                    }
+                });
+                
+                ws.addEventListener('close', () => {
+                    console.log('WebSocket connection closed');
+                });
+            }
+            
+            // Send editor updates to server
+            function sendEditorUpdate() {
+                if (!ws || ws.readyState !== 1 || !currentUser) return;
+                
+                const selection = window.getSelection();
+                const cursorPosition = selection.rangeCount > 0 ? 
+                    getCursorPosition(selection.getRangeAt(0)) : 0;
+                
+                const update = {
+                    type: 'update',
+                    userId: currentUser.id,
+                    content: editor.innerHTML,
+                    cursorPosition: cursorPosition
+                };
+                
+                ws.send(JSON.stringify(update));
+            }
+            
+            // Update cursor position and send to server
+            function updateCursorPosition() {
+                sendEditorUpdate();
+            }
+            
+            // Show typing indicator
+            function showTypingIndicator() {
+                if (!currentUser) return;
+                
+                // Show indicator
+                typingIndicator.classList.remove('hidden');
+                typingUser.textContent = currentUser.username;
+                typingIndicator.classList.add('typing-indicator');
+                
+                // Clear previous timeout
+                if (typingTimeout) {
+                    clearTimeout(typingTimeout);
+                }
+                
+                // Hide after 2 seconds of inactivity
+                typingTimeout = setTimeout(() => {
+                    typingIndicator.classList.add('hidden');
+                    typingIndicator.classList.remove('typing-indicator');
+                }, 2000);
+            }
+            
+            // Add collaborator
+            function addCollaborator(user) {
+                collaborators[user.id] = user;
+                updateCollaboratorsList();
+            }
+            
+            // Update collaborators list UI
+            function updateCollaboratorsList() {
+                if (Object.keys(collaborators).length === 0) {
+                    collaboratorsList.innerHTML = '<div class="text-gray-500">No collaborators yet. Share the document to invite others.</div>';
+                    return;
+                }
+                
+                collaboratorsList.innerHTML = '';
+                
+                Object.values(collaborators).forEach(user => {
+                    const collaboratorEl = document.createElement('div');
+                    collaboratorEl.className = 'flex items-center mb-2 last:mb-0';
+                    collaboratorEl.innerHTML = `
+                        <div class="w-3 h-3 rounded-full mr-2" style="background-color: ${user.color}"></div>
+                        <span>${user.username}</span>
+                        ${user.id === currentUser?.id ? '<span class="ml-2 text-xs text-gray-500">(You)</span>' : ''}
+                    `;
+                    collaboratorsList.appendChild(collaboratorEl);
+                });
+            }
+            
+            // Update remote cursors
+            function updateRemoteCursors(positions) {
+                // Clear existing cursors
+                cursorsContainer.innerHTML = '';
+                
+                positions.forEach(pos => {
+                    // Don't show our own cursor
+                    if (pos.userId === currentUser?.id) return;
+                    
+                    // Add to collaborators if not already present
+                    if (!collaborators[pos.userId]) {
+                        collaborators[pos.userId] = {
+                            id: pos.userId,
+                            username: pos.username || 'Anonymous',
+                            color: pos.color || '#000000'
+                        };
+                        updateCollaboratorsList();
+                    }
+                    
+                    // Create cursor element
+                    const cursorEl = document.createElement('div');
+                    cursorEl.className = 'cursor';
+                    cursorEl.style.backgroundColor = pos.color;
+                    
+                    // Create label
+                    const labelEl = document.createElement('div');
+                    labelEl.className = 'cursor-label';
+                    labelEl.textContent = pos.username;
+                    labelEl.style.backgroundColor = pos.color;
+                    
+                    // Position cursor
+                    const range = setCursorPosition(pos.position);
+                    if (range) {
+                        const rect = range.getBoundingClientRect();
+                        const editorRect = editor.getBoundingClientRect();
+                        
+                        cursorEl.style.left = `${rect.left - editorRect.left}px`;
+                        cursorEl.style.top = `${rect.top - editorRect.top}px`;
+                        
+                        labelEl.style.left = `${rect.left - editorRect.left}px`;
+                        labelEl.style.top = `${rect.top - editorRect.top - 20}px`;
+                        
+                        cursorEl.appendChild(labelEl);
+                        cursorsContainer.appendChild(cursorEl);
+                    }
+                });
+            }
+            
+            // Helper functions
+            function getRandomColor() {
+                const colors = ['#3B82F6', '#EF4444', '#10B981', '#F59E0B', '#8B5CF6'];
+                return colors[Math.floor(Math.random() * colors.length)];
+            }
+            
+            function getCursorPosition(range) {
+                const preCaretRange = range.cloneRange();
+                preCaretRange.selectNodeContents(editor);
+                preCaretRange.setEnd(range.endContainer, range.endOffset);
+                return preCaretRange.toString().length;
+            }
+            
+            function setCursorPosition(position) {
+                let charCount = 0;
+                const nodeStack = [editor];
+                let node;
+                let foundStart = false;
+                let range = document.createRange();
+                
+                range.setStart(editor, 0);
+                
+                while (!foundStart && (node = nodeStack.pop())) {
+                    if (node.nodeType === 3) {
+                        const nextCharCount = charCount + node.length;
+                        if (!foundStart && position >= charCount && position <= nextCharCount) {
+                            range.setStart(node, position - charCount);
+                            range.setEnd(node, position - charCount);
+                            foundStart = true;
+                        }
+                        charCount = nextCharCount;
+                    } else {
+                        let i = node.childNodes.length;
+                        while (i--) {
+                            nodeStack.push(node.childNodes[i]);
+                        }
+                    }
+                }
+                
+                return foundStart ? range : null;
+            }
+        });
+    </script>
+</body>
+</html>
