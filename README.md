@@ -29,5 +29,5 @@ This is one of the most advanced tasks — mimicking features of Google Docs and
 
 *OUTPUT:- 
 
-
+![Image](https://github.com/user-attachments/assets/317916a1-3d78-471e-a1d9-5fd9052be864)
 
